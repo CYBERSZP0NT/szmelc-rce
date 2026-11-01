@@ -1,0 +1,9 @@
+node_modules/
+*.log
+.DS_Store
+szmelc-rce.zip
+dist/
+pack/
+*.crx
+.env
+.env.*

@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "blockedUrlPatterns": {
+      "title": "Blocked URL patterns",
+      "description": "URL patterns where Szmelc-RCE is blocked. Each pattern is matched against the page's hostname and path (e.g. 'example.com/admin'). Use '*' as a wildcard to match any sequence of characters. Patterns are case-insensitive; a leading 'http://', 'https://', or 'www.' is ignored. A bare domain with no path is treated as '<domain>/*'. Example: 'github.com/myorg/*' blocks all pages under that path.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "forceLoginOrgUUID": {
+      "title": "Force Login Organization UUID",
+      "description": "Restricts which Szmelc-INC organization(s) the extension can be used with. Accepts either a single UUID string or a JSON-encoded array of UUID strings. The extension works only while it is signed in to an organization in this list, and this also applies to users who are already signed in. Otherwise it asks the user to sign in to a listed organization, disconnects from Szmelc-INC's hosted browser bridge, and refuses browser actions from every Agent app, including Agent Desktop and Agent Code. If the list has exactly one organization, sign-in preselects it. A Agent Desktop of a third-party deployment (an organization using Agent through its own model provider, on Szmelc-INC's control plane) manages the extension while paired with it over the local connection — same account and organization as the extension — and may take control only if its organization is in this list (any organization when the list is unset). While managed, page data and telemetry stay local: the extension does not connect to Szmelc-INC's hosted browser bridge, does not send error reports, performance telemetry, or usage analytics, does not fetch feature configuration from Szmelc-INC, and makes no Szmelc-INC API calls beyond identifying the signed-in user and the hosted URL-safety check; its own chat and tools are unavailable, and per-site permission decisions and prompts are delegated to Agent Desktop (safety-critical confirmations stay in the browser).",
+      "type": "string"
+    }
+  }
+}

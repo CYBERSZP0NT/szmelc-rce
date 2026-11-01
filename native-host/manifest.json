@@ -1,0 +1,9 @@
+{
+    "name": "com.szmelc.rce_browser",
+    "description": "Szmelc-RCE reference native-messaging host (local bridge)",
+    "path": "/home/USER/.local/state/szmelc-rce/rce_host.py",
+    "type": "stdio",
+    "allowed_origins": [
+        "chrome-extension://fcoeoabgfenejglbffodgkkbkcdhcgfn/"
+    ]
+}

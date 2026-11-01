@@ -1,0 +1,120 @@
+{
+  "manifest_version": 3,
+  "name": "Szmelc-RCE",
+  "version": "1.0.0",
+  "homepage_url": "https://szmelc.com",
+  "description": "Szmelc-INC Remote Control Extension (agent in your browser, fully self-hostable)",
+  "minimum_chrome_version": "116",
+  "icons": {
+    "128": "icon-128.png"
+  },
+  "background": {
+    "service_worker": "service-worker-loader.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open Szmelc-RCE"
+  },
+  "options_page": "options.html",
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "activeTab",
+    "scripting",
+    "debugger",
+    "tabGroups",
+    "tabs",
+    "alarms",
+    "notifications",
+    "webNavigation",
+    "declarativeNetRequestWithHostAccess",
+    "offscreen",
+    "nativeMessaging",
+    "unlimitedStorage",
+    "downloads",
+    "identity",
+    "favicon"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "storage": {
+    "managed_schema": "managed_schema.json"
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "assets/content-script.ts-loader-D2HlXAAI.js"
+      ],
+      "matches": [
+        "https://szmelc.com/*",
+        "https://*.szmelc.com/*"
+      ],
+      "run_at": "document_end"
+    },
+    {
+      "js": [
+        "assets/accessibility-tree.js-BICiAnsh.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "js": [
+        "assets/cursor-motion.js-uBhCC_Vx.js",
+        "assets/agent-visual-indicator.js-CpmhqLhr.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "externally_connectable": {
+    "matches": [
+      "https://szmelc.com/*",
+      "https://*.szmelc.com/*"
+    ]
+  },
+  "commands": {
+    "toggle-side-panel": {
+      "suggested_key": {
+        "default": "Ctrl+E",
+        "mac": "Command+E"
+      },
+      "description": "Toggle Szmelc-RCE side panel"
+    }
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjU1XnLPoasGVmZU42K3h6S+sQhkogfcoLPbIcrWH5Oo8QoInBIugkew/7cWaEFySyQrkaEBe1fjeS/rlAqd3r778dKcTvDZcXmj0VVX0Fi1i8tnkarurceGKGdVxfkL7e30nwfgwoPxj3H8OQbsbxFcBWGVtcFekmdpiyaxwz6o4yXIWColfAxh9K2yToOZkoAS5GvgGvTexiCh1gYy++eFdk6C61mcFsyDdoGQtduhGEaX0zZ9uAW1jX4JTPmHV3kEFrZu/WVBl7Obw+Jk/osoHMdmghVNy6SCB8/6mcgmxkP9buPrNUZgYP6n0x5dqEJ2Ecww/lb1Zd4nQf4XGOwIDAQAB",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://szmelc.com wss://szmelc.com https://szmelc.com https://szmelc.com https://*.ingest.us.sentry.io https://browser-intake-us5-datadoghq.com wss://szmelc.com wss://szmelc-staging.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
+  },
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "https://*.szmelc.com/*",
+        "https://szmelc.com/*"
+      ],
+      "resources": [
+        "assets/onboarding-prompts-CJtFEMjA.js",
+        "assets/content-script.ts-C6lrM1Zv.js"
+      ],
+      "use_dynamic_url": false
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "resources": [
+        "assets/accessibility-tree.js-BICiAnsh.js",
+        "assets/cursor-motion.js-uBhCC_Vx.js",
+        "assets/agent-visual-indicator.js-CpmhqLhr.js"
+      ],
+      "use_dynamic_url": false
+    }
+  ]
+}
