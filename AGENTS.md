@@ -34,9 +34,10 @@ The current task ("make it fully functional and buildable") is ~90% done; see §
     ├── i18n/ sounds/ public/      (public/ contains only offscreen.html)
     ├── native-host/               reference native-messaging host: rce_host.py (py3, stdio framing),
     │                              manifest.json (com.szmelc.rce_browser), install.sh
-    ├── scripts/syntax-check.js    (CJS!) syntax-checks all .js as ESM   → 374/374 pass
+    ├── scripts/syntax-check.cjs   syntax-checks all .js as ESM   → 746/746 pass
     ├── scripts/validate.mjs       manifest+graph+fonts+CSP+nativehost   → PASS (0 err, 0 warn)
     ├── scripts/build.mjs          validate → dist/szmelc-rce/ + dist/szmelc-rce.zip → works
+    ├── scripts/crx3.mjs           CRX3 packer (self-verified; key.pem / key.local.crx.pem) → dist/szmelc-rce.crx
     ├── dev/bridge.mjs             reference self-hosted WS bridge (env RCE_BRIDGE_PORT, def 8080)
     ├── test/bridge.test.mjs       bridge protocol self-test   → 1 assertion failing (see §5)
     ├── test/smoke.mjs             Playwright boot test in real Chrome → NOT RUN YET
@@ -93,74 +94,69 @@ before the original module scripts):
 `#szmelc-rce-config-section` panel (all fields + `localBridge` checkbox + nativeHosts
 textarea + Save/Reset/JSON buttons). Save → `storage.local` → SW auto-reloads.
 
-## 5. EXACT STATE AT STOP (pick up here)
+## 5. EXACT STATE (2026-11-01, toolchain session — DONE & verified)
 
-Task: "make it into a fully functional (and buildable) extension". Done so far & verified:
-✅ `npm install` (devDeps: `ws`, `playwright-core`; `node_modules` present)
-✅ `node scripts/validate.mjs` → **PASS** (manifest 9 file-refs; **990 asset refs** resolve;
-   26 woff2 fonts; CSP clean; native-host files)
-✅ `node scripts/build.mjs` → dist/szmelc-rce/ + dist/szmelc-rce.zip built
-✅ `dev/bridge.mjs` manually verified E2E (log shows `saved screenshot -> dev/shots/…`)
-❌ **`test/bridge.test.mjs` — 1 failing assertion, fix precisely known:**
-   The `checkScreenshot()` fn has a race: it snapshots dir listings (`snap`) *after* the
-   bridge already wrote the file, so the new-file diff is always empty. **Fix**: delete the
-   `snap` logic; SHOTS dir is `rm -rf`'d at test start and only the bridge writes there, so
-   just poll `fs.readdirSync(SHOTS).length >= 1` for ~2s. Replace with:
-   ```js
-   function checkScreenshot() {
-       assert(gotPaired, "connect -> paired");
-       assert(gotPong, "ping -> pong");
-       assert(gotToolReq?.method === "execute_tool", "bridge -> execute_tool (tool_request)");
-       const poll = (tries) => {
-           const now = fs.existsSync(SHOTS) ? fs.readdirSync(SHOTS) : [];
-           if (now.length >= 1) { assert(true, `screenshot persisted (${now.join(",")})`); return finish(); }
-           if (tries <= 0) { assert(false, "screenshot persisted (dir empty)"); return finish(); }
-           setTimeout(() => poll(tries - 1), 200);
-       };
-       setTimeout(() => poll(10), 150);
-   }
-   ```
-   (Also: `let gotPaired… snap` → drop `snap`.) Test file also has debug blines logging —
-   fine to keep or trim, up to you.
-❌ **`test/smoke.mjs` (Playwright) — never executed.** Loads ext with real Chrome
-   (`--load-extension` + `--headless=new`), asserts: SW boots, `__SZMELC_CFG.bridgeUrl ===
-   "wss://szmelc.com"`, options panel renders with defaults, pairing.html loads. Run it,
-   debug if any of the three fails; env has `/usr/bin/google-chrome`, `DISPLAY=:1`, no xvfb
-   (system Chrome handles headless itself).
-⚠️ **Latent bug**: `package.json` now has `"type": "module"` but
-   `scripts/syntax-check.js` is **CJS (`require`)** → `npm run check` will crash.
-   Fix: rename to `syntax-check.cjs` (update package.json script) or convert to ESM.
-⚠️ **Uncommitted work**: git has 2 commits only; `M manifest.json M package.json` plus
-   untracked `dev/ test/ scripts/build.mjs scripts/validate.mjs package-lock.json`.
-   Commit everything once tests are green.
+Task: "make it fully functional and buildable, packable as zip or CRX" — **DONE**:
 
-### Next steps, in order
-1. Fix `test/bridge.test.mjs` as above → `node test/bridge.test.mjs` green.
-2. Fix syntax-check .cjs/module issue → `npm run check` and validate both green.
-3. `node test/smoke.mjs` → make green (likely small issues; read `[diag]` output it prints).
-4. `npm run test:all`.
-5. git add + commit ("toolchain: validate/build/bridge + tests").
-6. Refresh `backup/` tarball of final state.
-7. Optional polish (user-visible): `icon-128.png` still the Claude logo (make a Szmelc
-   mark if desired); `dev/bridge.mjs` SCENARIO tool name `"tab_new"` is a GUESS — the real
-   tool registry names live in `mcpPermissions` (grep `"tab_` / the `Ae` allow-set /
-   `Vt`/`Wc` arrays: known real names: left_click, right_click, double_click, triple_click,
-   middle_click, type, key, wait, scroll, hover, left_click_drag, zoom, scroll_to,
-   form_input, screenshot, browser_batch). Verify before claiming E2E demo works.
-8. Bigger open item for the user: wire their own MCP server / agent to the bridge
-   protocol, or via native host (`native-host/rce_host.py` `handle_execute_tool()` is the
-   integration point). Also `oauth_callback.html` is referenced by the upstream OAuth
-   default but is **absent from the upstream extract too** — leave as-is (upstream state).
+✅ `npm run check` — 746/746 files parse (`scripts/syntax-check.js` → `syntax-check.cjs`;
+   repo is `"type":"module"`, a plain `.js` with `require` crashes)
+✅ `npm run validate` — 0 err / 0 warn (990 asset refs, 26 fonts, CSP, native host)
+✅ `npm run build` — `dist/szmelc-rce/` + `dist/szmelc-rce.zip`
+   (root fix: python3 `-m zipfile -c` does NOT accept `-x`; the old arg silently
+   no-op'd to the system `zip` fallback)
+✅ `node test/bridge.test.mjs` — 4/4. Screenshot race fixed: SHOTS is wiped at start
+   and only the bridge writes there, so "any entry" == persisted (no dir snapshot).
+✅ `node test/smoke.mjs` — 8/8 in real Chromium. Browser fallback loop: on this box
+   google-chrome is broken (missing `libffmpeg.so`); test auto-skips to chromium.
+   Options-panel bug fixed: form population queried `document` before the section was
+   prepended → `querySelector('[data-szconf-list]')` was null and threw (twice, on both
+   render passes); now section-scoped + single-render guard.
+✅ **`npm run crx` → `dist/szmelc-rce.crx`** — real CRX3 per Chromium
+   `crx_file_format.proto`: `Cr24 | u32le ver=3 | u32le hlen | protobuf CrxFileHeader
+   { sha256_with_rsa(1 SPKI-DER + sig), signed_header_data = SignedData{crx_id} } |
+   zip`. RSA-SHA256 over `"CRX3 SignedData\0" + u32le(len(signed_header_data)) +
+   signed_header_data + zip`. crx_id = sha256(SPKI-der)[0:16]. Self-verifies in the
+   script; external `crx3-verify rsa 0 key.local.crx.pem` (crx3-utils) passes.
+   Key ladder: `--key k.pem` → `$CRX_KEY` → `key.pem` → `key.local.crx.pem`
+   (auto-generated & committed for a stable CRX id
+   `jjkjjnpppmdojnfhlaeabnegfmpohbpd`). If signing key ≠ manifest key, the CRX is
+   packed from a temp copy with the manifest key patched (unpacked `dist/` keeps the
+   original id `fcoeoabgfenejglbffodgkkbkcdhcgfn`). To get the ORIGINAL id in a CRX:
+   need the private key behind the manifest public `key` (upstream's) → `key.pem`.
+   Note: local Chromium 153 didn't boot ANY local CRX via `--load-extension` /
+   `--load-cr-extension` / `--install-extension` (trivial ext too; no `Extensions/`
+   dir lands) — env idiosyncrasy, verified unpacked load is green in the same
+   Chromium, so ship both.
+✅ Szmelc S-mark icon: `szmelc-mark.svg` → `icon-{16,32,48,128}.png` + `action/`
+   copies; manifest `icons` (all sizes) + `action.default_icon` (Claude logo gone).
+✅ CSP `connect-src` now includes `ws://localhost:* ws://127.0.0.1:*` (any local
+   bridge port, incl. the bridge test's ephemeral ports).
+✅ `pack.sh` packs the lean `dist/` tree (was whole repo incl. `node_modules`).
+✅ git = 3 commits; `backup/szmelc-rce-final-20261101.tar.gz` refreshed (excl.
+   node_modules/dist).
+✅ Bridge demo tool names VERIFIED against the real registry (the `Ot` allow-set in
+   mcpPermissions-*.js): `tabs_create` (NO args) → `navigate` `{url, tabId}` →
+   `wait` `{seconds}` → `screenshot`. Old guess `tab_new {url}` replaced.
+
+Open items (user-side, not blockers):
+1. Wire their own MCP server / agent: swap `handleTool()` in `dev/bridge.mjs` or use
+   `native-host/rce_host.py` `handle_execute_tool()`.
+2. `oauth_callback.html` absent from the upstream extract too — leave as-is.
+3. `agent_icon.svg` is an unreferenced leftover — safe to delete someday.
+4. `key.local.crx.pem` is the CRX private key; fine for self-hosting (id-pinning),
+   but note it's now public in the repo — rotate by deleting it + `npm run crx`.
 
 ## 6. Commands (all from `szmelc-rce/`)
 
 ```sh
-npm run check          # syntax-check all .js as ESM (broken until §5 fix applied)
+npm run check          # syntax-check all .js as ESM (746/746)
 node scripts/validate.mjs
 node scripts/build.mjs # → dist/szmelc-rce/ + dist/szmelc-rce.zip
+npm run crx            # → dist/szmelc-rce.crx (real, signed CRX3)
+npm run pack           # → szmelc-rce.zip (lean dist/ pack)
 npm run start:bridge   # reference self-hosted bridge on :8080 (RCE_BRIDGE_PORT=…)
-node test/bridge.test.mjs
-node test/smoke.mjs    # CHROME_PATH override if needed
+node test/bridge.test.mjs          # 4/4 green
+node test/smoke.mjs                # 8/8 green (CHROME_PATH override if needed)
 npm run test:all
 ```
 Install the extension: `chrome://extensions` → Developer mode → Load unpacked →
@@ -176,14 +172,15 @@ the same). Options page → "Szmelc-RCE Configuration" to change endpoints at ru
    (`--input-type=module` with a file arg throws).
 3. Mass text replacement created **illegal identifiers** (`szmelc-inc` in code → fixed to
    `szmelc_inc`/`SzmelcINC` in identifier contexts). After ANY find/replace: run
-   `node scripts/syntax-check.js` (374/374 expected).
+   `node scripts/syntax-check.cjs` (746/746 expected).
 4. Two "unresolved refs" are false positives and already special-cased in validator:
    `mcpPermissions` `new URL("/api/web/url_hash_check/browser_extension", base)` and
    `sidepanel` `new URL(chrome.runtime.getURL("/_favicon/"))`.
 5. **Chrome requires new `connect-src` hosts in the manifest CSP** (static per-extension;
    a runtime-changed endpoint on a brand-new host/port needs a manifest edit + reload).
    Currently allowed: self, `https://szmelc.com`, `wss://szmelc.com`,
-   `wss://szmelc-staging.com`, `ws://127.0.0.1:8765`, `ws://localhost:8765`.
+   `wss://szmelc-staging.com`, **any local bridge port** (`ws://127.0.0.1:*`,
+   `ws://localhost:*`). Remote non-szmelc hosts still need a manifest edit + reload.
 6. `pkill -f bridge.mjs` in the same shell command as a running test can SIGTERM the
    pipeline (exit 143) — separate the calls; the test uses port `9000 + (pid % 500)`
    precisely to avoid EADDRINUSE.
@@ -197,7 +194,8 @@ the same). Options page → "Szmelc-RCE Configuration" to change endpoints at ru
 ## 8. Environment facts
 
 - Node **v22.23.3**, npm 12.2.0, registry reachable, **DISPLAY=:1**, no xvfb.
-- Browsers: `/usr/bin/google-chrome`, `/usr/bin/chromium` (153.0.8010.52, Arch).
+- Browsers: `/usr/bin/google-chrome` (BROKEN on this box: missing `libffmpeg.so`),
+  `/usr/bin/chromium` (153.0.8010.52, Arch) — the smoke test falls back automatically.
   Playwright cache exists (`~/.cache/ms-playwright`) but smoke test deliberately uses
   system Chrome (`--load-extension` needs the full browser, not headless_shell).
 - Python 3.14.7 (for `python3 -m zipfile` in build.mjs and the native host).
