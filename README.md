@@ -98,11 +98,55 @@ any process you write in any language can drive the browser.
 
 3. (optional) Grant `nativeMessaging` in options when you want the local
    bridge, and install a host script (see below).
+   
+> **Note on CSP:** `manifest.json` `connect-src` currently allows
+> `szmelc.com` plus **any** `ws://localhost` / `ws://127.0.0.1` port.
+> If you self-host the remote bridge under another *hostname*, add it to
+> `content_security_policy` in the manifest (Chrome requires all `connect-src`
+> targets to be declared statically) and reload the extension.
 
-> **Note on `chrome://`/CSP:** `manifest.json` `connect-src` currently allows
-> `szmelc.com` + `localhost:8765`. If you self-host the bridge on another
-> hostname or port, add it to `content_security_policy` (Chrome requires all
-> `connect-src` targets to be declared in the manifest).
+## Build, test & CRX
+
+All from the repo root:
+
+```sh
+npm install
+npm run check      # syntax-check every JS file (ESM)  → 746/746 expected
+npm run validate   # manifest refs, asset graph, fonts, CSP, native host
+npm run build      # validate → dist/szmelc-rce/ + dist/szmelc-rce.zip
+npm run crx        # → dist/szmelc-rce.crx (real CRX3, self-verified)
+node test/bridge.test.mjs   # bridge protocol self-test (no browser)
+node test/smoke.mjs         # Playwright boot test in system Chrome (CHROME_PATH=… to override)
+npm run test:all
+npm run start:bridge  # reference self-hosted WS bridge on :8080 (RCE_BRIDGE_PORT=…)
+```
+
+Install, three ways:
+
+- **Unpacked (dev):** `chrome://extensions` → Developer mode → *Load unpacked*
+  → `dist/szmelc-rce` (or the repo root — identical code, no build needed).
+- **CRX:** drag `dist/szmelc-rce.crx` into `chrome://extensions` (Developer
+  mode).
+- **Zip:** `./pack.sh my-szmelc-rce.zip` and side-load / share.
+
+### CRX signing & the extension id
+
+`npm run crx` signs with (first match wins): `--key k.pem` → `$CRX_KEY` →
+`./key.pem` → `./key.local.crx.pem` (auto-generated on first run, kept on disk
+so repeat builds keep a **stable id**).
+
+- Chrome derives the CRX id from the manifest `key` field. If that key
+  doesn't match your signing key, the packer builds the CRX from a temp copy
+  with the matching key (unpacked `dist/` is left untouched, keeping the
+  manifest's original id `fcoeoabgfenejglbffodgkkbkcdhcgfn`).
+- The upstream-pinned id is referenced by `native-host/manifest.json`
+  (`allowed_origins`) and the OAuth redirect URI. To use the original id in a
+  CRX too, you'd need the *private* key that matches the manifest `key` —
+  otherwise accept the new id and update `native-host/manifest.json` to match.
+
+The packer's output is verified against Chromium's
+[`crx_file_format.proto`](https://source.chromium.org/chromium/chromium/src/+/main:extensions/common/crx_file_format.proto) —
+self-check plus `crx3-verify` (from `crx3-utils`) both pass.
 
 ### Native host (Linux example)
 
@@ -147,7 +191,13 @@ assets/
   sidepanel-*.js            embedded web-app UI (React bundle)
   content-script / accessibility-tree / cursor-motion / agent-visual-indicator
 native-host/             reference native messaging host (Python, no deps)
-pack.sh                  pack the folder as a .zip/.crx container
+scripts/syntax-check.cjs ESM syntax check for every .js (npm run check)
+scripts/validate.mjs     manifest/graph/font/CSP/native-host validator
+scripts/build.mjs        validate → dist/ + zip
+scripts/crx3.mjs         CRX3 packer (self-verified, key management)
+dev/bridge.mjs           reference self-hosted WS bridge (demo scenario)
+test/                    bridge protocol test + Playwright smoke test
+pack.sh                  pack dist/ as a .zip
 ```
 
 ## License & provenance

@@ -83,14 +83,17 @@
             <span data-szconf-status style="font-size:12px;opacity:.7"></span>
         </div>`;
 
-        document.querySelectorAll('[data-szconf]').forEach(el => {
+        // Populate the form. Scope queries to the section: it isn't in the
+        // document yet (it's prepended at the end of this function).
+        section.querySelectorAll('[data-szconf]').forEach(el => {
             const v = cfg[el.dataset.szconf];
             if (typeof v === 'string' && v) el.value = v;
         });
-        document.querySelectorAll('[data-szconf-flag]').forEach(el => {
+        section.querySelectorAll('[data-szconf-flag]').forEach(el => {
             el.checked = !!cfg[el.dataset.szconfFlag];
         });
-        document.querySelector('[data-szconf-list]').value = (cfg.nativeHosts || []).join('\n');
+        const listEl = section.querySelector('[data-szconf-list]');
+        if (listEl) listEl.value = (cfg.nativeHosts || []).join('\n');
 
         const status = section.querySelector('[data-szconf-status]');
         const set = (m) => { status.textContent = m; setTimeout(() => status.textContent = '', 4000); };
@@ -145,6 +148,12 @@
         document.body.prepend(section);
     }
 
-    document.addEventListener('DOMContentLoaded', render);
-    if (document.readyState !== 'loading') render();
+    let booted = false;
+    function start() {
+        if (booted) return;
+        booted = true;
+        render().catch((err) => console.error('[Szmelc-RCE config]', err));
+    }
+    document.addEventListener('DOMContentLoaded', start);
+    if (document.readyState !== 'loading') start();
 })();

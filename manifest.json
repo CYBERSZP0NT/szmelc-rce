@@ -6,6 +6,9 @@
   "description": "Szmelc-INC Remote Control Extension (agent in your browser, fully self-hostable)",
   "minimum_chrome_version": "116",
   "icons": {
+    "16": "icon-16.png",
+    "32": "icon-32.png",
+    "48": "icon-48.png",
     "128": "icon-128.png"
   },
   "background": {
@@ -13,7 +16,13 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Open Szmelc-RCE"
+    "default_title": "Open Szmelc-RCE",
+    "default_icon": {
+      "16": "action/icon-16.png",
+      "32": "action/icon-32.png",
+      "48": "action/icon-48.png",
+      "128": "action/icon-128.png"
+    }
   },
   "options_page": "options.html",
   "permissions": [
@@ -91,7 +100,7 @@
   },
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjU1XnLPoasGVmZU42K3h6S+sQhkogfcoLPbIcrWH5Oo8QoInBIugkew/7cWaEFySyQrkaEBe1fjeS/rlAqd3r778dKcTvDZcXmj0VVX0Fi1i8tnkarurceGKGdVxfkL7e30nwfgwoPxj3H8OQbsbxFcBWGVtcFekmdpiyaxwz6o4yXIWColfAxh9K2yToOZkoAS5GvgGvTexiCh1gYy++eFdk6C61mcFsyDdoGQtduhGEaX0zZ9uAW1jX4JTPmHV3kEFrZu/WVBl7Obw+Jk/osoHMdmghVNy6SCB8/6mcgmxkP9buPrNUZgYP6n0x5dqEJ2Ecww/lb1Zd4nQf4XGOwIDAQAB",
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://szmelc.com wss://szmelc.com https://szmelc.com https://szmelc.com https://*.ingest.us.sentry.io https://browser-intake-us5-datadoghq.com wss://szmelc.com wss://szmelc-staging.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
+            "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://szmelc.com wss://szmelc.com wss://szmelc-staging.com ws://localhost:* ws://127.0.0.1:*; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
   },
   "web_accessible_resources": [
     {

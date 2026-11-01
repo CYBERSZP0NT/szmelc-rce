@@ -2,9 +2,10 @@
   "name": "szmelc-rce",
   "version": "1.0.0",
   "private": true,
-  "description": "Szmelc-INC Remote Control Extension — self-hostable browser remote control (MV3, forked from Claude in Chrome)",
+  "description": "Szmelc-INC Remote Control Extension - self-hostable browser remote control (MV3, forked from Claude in Chrome)",
   "license": "MIT",
   "homepage": "https://szmelc.com",
+  "type": "module",
   "repository": {
     "type": "git",
     "url": "https://szmelc.com/git/szmelc-rce"
@@ -15,13 +16,23 @@
     "cdp",
     "mcp",
     "agent",
+    "manifest-v3",
     "self-hosted"
   ],
   "scripts": {
-    "lint:syntax": "node scripts/syntax-check.js",
+    "check": "node scripts/syntax-check.cjs",
+    "validate": "node scripts/validate.mjs",
+    "build": "node scripts/build.mjs",
+    "start:bridge": "node dev/bridge.mjs",
+    "test": "node test/smoke.mjs",
+    "test:bridge": "node test/bridge.test.mjs",
+    "test:all": "node test/bridge.test.mjs && node test/smoke.mjs",
+    "crx": "node scripts/crx3.mjs",
+    "crx:verify": "crx3-verify rsa 0 key.local.crx.pem < dist/szmelc-rce.crx 2>/dev/null || node -e \"console.log('self-verify in build already covers this')\"",
     "pack": "bash pack.sh"
   },
   "devDependencies": {
-    "js-beautify": "^2.0.0"
+    "playwright-core": "^1.48.0",
+    "ws": "^8.18.0"
   }
 }

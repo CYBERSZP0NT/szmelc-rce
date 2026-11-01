@@ -7,3 +7,4 @@ pack/
 *.crx
 .env
 .env.*
+dev/shots/
