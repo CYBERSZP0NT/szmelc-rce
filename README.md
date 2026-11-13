@@ -173,10 +173,12 @@ so repeat builds keep a **stable id**).
 
 > **Keys never leave your machine.** Signing keys are git-ignored
 > (`.gitignore` `*.pem`) and `npm run build` refuses to ship any `*.pem` /
-> `.crx` inside `dist/` — the historical accident of a committed
-> `key.local.crx.pem` is fixed (untrack it with
-> `git rm --cached key.local.crx.pem` on old clones; `npm run validate`
-> fails while it is still tracked).
+> `.crx` inside `dist/`. The historically committed `key.local.crx.pem` was
+> **rotated on 2026-11-13** (leaked key deleted, fresh key generated — see
+> [SECURITY.md](./SECURITY.md)); CRX installs now resolve to the extension id
+> `aikmpdfmhcddahdfoeiooaihhdcfmjak`. On old clones run
+> `git rm --cached key.local.crx.pem` if still tracked — `npm run validate`
+> fails while a key file is tracked.
 
 - Chrome derives the CRX id from the manifest `key` field. If that key
   doesn't match your signing key, the packer builds the CRX from a temp copy
