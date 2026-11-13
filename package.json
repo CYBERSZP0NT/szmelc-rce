@@ -26,12 +26,15 @@
     "start:bridge": "node dev/bridge.mjs",
     "test": "node test/smoke.mjs",
     "test:bridge": "node test/bridge.test.mjs",
-    "test:all": "node test/bridge.test.mjs && node test/nativehost.test.mjs && node test/smoke.mjs && node test/e2e-bridge.mjs",
+    "test:all": "node test/bridge.test.mjs && node test/nativehost.test.mjs && node test/backend.test.mjs && node test/smoke.mjs && node test/e2e-bridge.mjs",
     "crx": "node scripts/crx3.mjs",
     "crx:verify": "crx3-verify rsa 0 key.local.crx.pem < dist/szmelc-rce.crx 2>/dev/null || node -e \"console.log('self-verify in build already covers this')\"",
     "pack": "bash pack.sh",
     "test:nativehost": "node test/nativehost.test.mjs",
-    "test:e2e": "node test/e2e-bridge.mjs"
+    "test:e2e": "node test/e2e-bridge.mjs",
+    "start:backend": "node backend/server.mjs",
+    "test:backend": "node test/backend.test.mjs",
+    "test:e2e-backend": "node test/e2e-backend.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.48.0",

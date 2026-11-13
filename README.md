@@ -155,7 +155,19 @@ node test/smoke.mjs           # Playwright boot test in system Chrome (CHROME_PA
 node test/e2e-bridge.mjs      # real browser ↔ local bridge: anonymous connect + real tools
 npm run test:all
 npm run start:bridge  # reference self-hosted WS bridge on :8080 (RCE_BRIDGE_PORT=…)
+npm run start:backend # production backend for szmelc.com (WS + HTTP agent API)
+npm run test:backend  # backend self-test (14/14, no browser)
+npm run test:e2e-backend  # real browser ↔ backend ↔ HTTP API (needs a browser)
 ```
+
+## Remote backend (szmelc.com)
+
+`backend/server.mjs` is the production control bridge: extensions connect to
+`wss://szmelc.com/chrome/<userId>` and agents drive them over plain HTTP
+(`POST /chrome/<userId>/tools`) or WebSocket (`/agent/<userId>`), with device
+discovery (`GET /devices`), per-call timeouts, token auth and permission
+policies — see [backend/README.md](./backend/README.md) for the API, curl
+examples and nginx/systemd deployment snippets.
 
 Install, three ways:
 
@@ -240,6 +252,7 @@ scripts/syntax-check.cjs ESM syntax check for every .js (npm run check)
 scripts/validate.mjs     manifest/graph/font/CSP/native-host validator
 scripts/build.mjs        validate → dist/ + zip
 scripts/crx3.mjs         CRX3 packer (self-verified, key management)
+backend/server.mjs       production remote backend (HTTP agent API + WS bridge)
 dev/bridge.mjs           reference self-hosted WS bridge (demo scenario)
 test/                    bridge protocol test, native-host test, Playwright smoke test
 pack.sh                  pack dist/ as a .zip
