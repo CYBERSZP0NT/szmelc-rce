@@ -34,13 +34,16 @@ The current task ("make it fully functional and buildable") is ~90% done; see §
     ├── i18n/ sounds/ public/      (public/ contains only offscreen.html)
     ├── native-host/               reference native-messaging host: rce_host.py (py3, stdio framing),
     │                              manifest.json (com.szmelc.rce_browser), install.sh
-    ├── scripts/syntax-check.cjs   syntax-checks all .js as ESM   → 746/746 pass
-    ├── scripts/validate.mjs       manifest+graph+fonts+CSP+nativehost   → PASS (0 err, 0 warn)
+    ├── scripts/syntax-check.cjs   syntax-checks all .js as ESM   → 373/373 pass (dist/ excluded)
+    ├── scripts/validate.mjs       manifest+graph+fonts+CSP+nativehost+secrets → PASS (0 err, 0 warn)
     ├── scripts/build.mjs          validate → dist/szmelc-rce/ + dist/szmelc-rce.zip → works
+    │                              (excludes keys/dev/test/scripts; fails if a *.pem leaks in)
     ├── scripts/crx3.mjs           CRX3 packer (self-verified; key.pem / key.local.crx.pem) → dist/szmelc-rce.crx
     ├── dev/bridge.mjs             reference self-hosted WS bridge (env RCE_BRIDGE_PORT, def 8080)
-    ├── test/bridge.test.mjs       bridge protocol self-test   → 1 assertion failing (see §5)
-    ├── test/smoke.mjs             Playwright boot test in real Chrome → NOT RUN YET
+    ├── test/bridge.test.mjs       bridge protocol self-test   → 4/4 pass
+    ├── test/nativehost.test.mjs   native-messaging host self-test → 10/10 pass
+    ├── test/e2e-bridge.mjs        real-browser ↔ local bridge: anonymous connect + real tools → 11/11 pass
+    ├── test/smoke.mjs             Playwright boot test in real Chrome → 8/8 pass
     ├── README.md LICENSE package.json package-lock.json .gitignore pack.sh
     ├── dev/shots/                 demo bridge saves screenshots here
 ```
@@ -149,14 +152,16 @@ Open items (user-side, not blockers):
 ## 6. Commands (all from `szmelc-rce/`)
 
 ```sh
-npm run check          # syntax-check all .js as ESM (746/746)
+npm run check          # syntax-check all .js as ESM (373/373; dist/ excluded)
 node scripts/validate.mjs
 node scripts/build.mjs # → dist/szmelc-rce/ + dist/szmelc-rce.zip
 npm run crx            # → dist/szmelc-rce.crx (real, signed CRX3)
 npm run pack           # → szmelc-rce.zip (lean dist/ pack)
 npm run start:bridge   # reference self-hosted bridge on :8080 (RCE_BRIDGE_PORT=…)
 node test/bridge.test.mjs          # 4/4 green
+node test/nativehost.test.mjs      # 10/10 green
 node test/smoke.mjs                # 8/8 green (CHROME_PATH override if needed)
+node test/e2e-bridge.mjs           # 11/11 green — anonymous connect + real tools (~2 min)
 npm run test:all
 ```
 Install the extension: `chrome://extensions` → Developer mode → Load unpacked →
@@ -176,14 +181,12 @@ the same). Options page → "Szmelc-RCE Configuration" to change endpoints at ru
 4. Two "unresolved refs" are false positives and already special-cased in validator:
    `mcpPermissions` `new URL("/api/web/url_hash_check/browser_extension", base)` and
    `sidepanel` `new URL(chrome.runtime.getURL("/_favicon/"))`.
-5. **Chrome requires new `connect-src` hosts in the manifest CSP** (static per-extension;
-   a runtime-changed endpoint on a brand-new host/port needs a manifest edit + reload).
-   Currently allowed: self, `https://szmelc.com`, `wss://szmelc.com`,
-   `wss://szmelc-staging.com`, **any local bridge port** (`ws://127.0.0.1:*`,
-   `ws://localhost:*`). Remote non-szmelc hosts still need a manifest edit + reload.
-6. `pkill -f bridge.mjs` in the same shell command as a running test can SIGTERM the
-   pipeline (exit 143) — separate the calls; the test uses port `9000 + (pid % 500)`
-   precisely to avoid EADDRINUSE.
+5. **CSP:** `connect-src` now uses bare **scheme sources** (`https: http: wss: ws:`),
+   so ANY endpoint host works with no manifest edits. Do NOT switch back to
+   `ws://*`-style wildcards: the extension service worker silently refuses them
+   (pages honour them — SW does not; verified via test/probe experiments 2026-11-13).
+6. Tests pick genuinely free ports (ephemeral via `net.createServer` listen(0)) —
+   the old `9000 + (pid % 500)` heuristic collided with other processes.
 7. Config `applySync` writes `storage.session` best-effort; `init()` reads session
    (sync) then local (async). SW self-reloads on config save to be safe.
 8. Extension **ID is pinned to `fcoeoabgfenejglbffodgkkbkcdhcgfn`** (from the kept manifest
@@ -218,3 +221,51 @@ the same). Options page → "Szmelc-RCE Configuration" to change endpoints at ru
 - removed: store `update_url`, uninstall-survey URL (docs.google.com form), Sentry/Datadog
   CSP entries, `git-hash.txt`. `claude_icon.svg→agent_icon.svg`.
 - ZERO `anthropic|claude` occurrences remain in any text file (validated by grep).
+
+
+## 10. Session log — 2026-11-13 bug-fix pass (DONE, all green)
+
+Commit `2ba3055`. Fixed:
+
+- **native-host/rce_host.py was fatally broken**: `recv()` did `(length,) = header`
+  (bytes has no `.unpack`) → ValueError on EVERY message; `handle_execute_tool()` got
+  the method string instead of the envelope → AttributeError. Both fixed; host now
+  answers ping/get_status, sends `mcp_connected`, and gained `RCE_HOST_SERVE` (WS
+  drive port relaying tool_call frames to the extension, tool_use_id-correlated).
+  New `test/nativehost.test.mjs` (10/10) covers ping/status/tool_request/relay.
+- **Bridge required sign-in to connect at all** (`an()`/`on()`/`rn()` all gated on
+  `K()` identity). Added anonymous bridge mode: `bridgeAnonymous` (default ON) in
+  `szmelc-config.js` + options checkbox; SW falls back to device-uuid identity
+  (userId + oauth_token = device uuid) when signed out; managed-org posture still wins.
+- **Boot-dial race**: worker dialled the default bridge before `chrome.storage.local`
+  config read completed → wedged CONNECTING. `SZMELC.init()` now exposes `ready`
+  (resolves after persisted config applied) and the SW boot awaits it before `rn()`.
+- **`tool_request` frames were never processed over the WS bridge** (only hosted
+  `tool_call`). Added a compat case in the SW WS switch normalizing the generic
+  envelope; the extension replies `tool_result` (NOT `tool_response` — that is the
+  native-port type). `dev/bridge.mjs` + README now document the real protocol.
+- **CSP for "works with anything"**: bare scheme sources (`https: http: wss: ws:`).
+  Verified: pages honour `ws://*` wildcards, the extension SW does NOT — scheme
+  sources work in both.
+- **Secrets hygiene**: `key.local.crx.pem` untracked + ignored; `build.mjs` excludes
+  keys/dev/test/scripts from dist/ and hard-fails if a `*.pem` leaks; `validate.mjs`
+  [6/6] fails while a key is git-tracked; `pack.sh` exclusions fixed.
+- Misc: blank config fields no longer override defaults (`_merge`), bridge test no
+  longer false-PASSes when the bridge child dies, ephemeral test ports, syntax-check
+  skips dist/ (stable 373 count), `package.json` repository → GitHub, test scripts
+  `test:nativehost` / `test:e2e`.
+- New `test/e2e-bridge.mjs` (11/11): real Chromium, unsigned profile, config pointed
+  at an ephemeral local bridge → anonymous connect frame asserted, `wait` +
+  `tabs_context_mcp{createIfEmpty}` + `tabs_create_mcp` executed, created tab verified
+  via `chrome.tabs.get`. NOTE: `computer{action:screenshot}` hangs in headless
+  (no visible surface / permission-popup path) — not asserted in e2e; fine headed.
+
+Wire-protocol cheat sheet (bridge side):
+    connect -> paired | waiting;  ping -> pong
+    {"type":"tool_call","tool_use_id","tool","args","tabId"?,"client_type"}
+    {"type":"tool_request","method":"execute_tool","params":{tool,args,...}}  (accepted too)
+    reply: {"type":"tool_result","tool_use_id", content | error | result}
+    permission prompts: {"type":"permission_request","request_id",...} -> answer
+    {"type":"permission_response","request_id","allowed":true|false}
+    tab tools need a session context first: tabs_context_mcp {createIfEmpty:true}
+    and the SAME session_scope {sessionId, displayName} on later calls.
