@@ -128,6 +128,27 @@ and appears in `GET /devices`.
 > Extension note: `connect-src` in the manifest already allows any `wss:` host
 > (bare scheme sources), so no manifest edit is needed for your own domain.
 
+## PHP single-file variant (server.php)
+
+For hosts where Node isn't an option, server.php (repo root) provides both
+sides in one dependency-free file:
+
+Static resolver (any PHP host: `php -S 0.0.0.0:9000 server.php` or FPM):
+serves the extension build / .crx / .zip from its directory (RCE_STATIC_ROOT
+to override) with correct MIME types, a `?file=` fallback for hosts without
+URL rewriting, path-traversal protection, and PHP-source denial.
+
+Bridge daemon (CLI, long-running - same privileges as the Node backend):
+
+    php server.php --serve --port 8081        # + optional --host
+    RCE_API_TOKEN=... RCE_PERMISSIONS=deny php server.php --serve
+    node test/server-php.test.mjs             # 17/17 (bridge + static modes)
+
+Same API as above (GET /devices, GET|POST /chrome/<userId>/...,
+ws://.../agent/<userId>, RCE_API_TOKEN Bearer auth), implemented with
+stream_select + pure-PHP RFC 6455 framing - no PHP extensions required.
+The nginx config is identical to the Node setup, just proxy to the PHP port.
+
 ## Security notes
 
 - This server gives whoever calls it **full browser control** of every

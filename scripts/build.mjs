@@ -19,7 +19,7 @@ const OUT = path.join(DIST, "szmelc-rce");
 const ZIP = path.join(DIST, "szmelc-rce.zip");
 
 const IGNORED_DIRS = new Set(["node_modules", ".git", "dist", "dev", "scripts", "test"]);
-const IGNORED_FILES = new Set(["package.json", "package-lock.json", ".gitignore", "AGENTS.md"]);
+const IGNORED_FILES = new Set(["package.json", "package-lock.json", ".gitignore", "AGENTS.md", "server.php"]);
 // Private signing keys must never ship inside a build artifact.
 const IGNORED_SUFFIXES = [".pem", ".crx", ".log"];
 const STEP = (s) => console.log(`\n\x1b[1m\x1b[36m== ${s}\x1b[0m`);

@@ -34,7 +34,9 @@
     "test:e2e": "node test/e2e-bridge.mjs",
     "start:backend": "node backend/server.mjs",
     "test:backend": "node test/backend.test.mjs",
-    "test:e2e-backend": "node test/e2e-backend.mjs"
+    "test:e2e-backend": "node test/e2e-backend.mjs",
+    "start:backend-php": "php server.php --serve",
+    "test:backend-php": "node test/server-php.test.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.48.0",

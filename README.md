@@ -162,61 +162,20 @@ npm run test:e2e-backend  # real browser ↔ backend ↔ HTTP API (needs a brows
 
 ## Remote backend (szmelc.com)
 
-`backend/server.mjs` is the production control bridge: extensions connect to
-`wss://szmelc.com/chrome/<userId>` and agents drive them over plain HTTP
-(`POST /chrome/<userId>/tools`) or WebSocket (`/agent/<userId>`), with device
-discovery (`GET /devices`), per-call timeouts, token auth and permission
-policies — see [backend/README.md](./backend/README.md) for the API, curl
-examples and nginx/systemd deployment snippets.
+Two interchangeable backends are included:
 
-Install, three ways:
+- `backend/server.mjs` (Node) - the production control bridge: extensions
+  connect to `wss://szmelc.com/chrome/<userId>` and agents drive them over
+  plain HTTP (`POST /chrome/<userId>/tools`) or WebSocket (`/agent/<userId>`),
+  with device discovery (`GET /devices`), per-call timeouts, token auth and
+  permission policies.
+- `server.php` (PHP, single file) - a static resolver for hosting the
+  extension files (.crx/.zip/manifest with correct MIME) plus a pure-PHP
+  RFC 6455 bridge daemon with the same API; runs on any PHP host, no
+  PHP extensions required.
 
-- **Unpacked (dev):** `chrome://extensions` → Developer mode → *Load unpacked*
-  → `dist/szmelc-rce` (or the repo root — identical code, no build needed).
-- **CRX:** drag `dist/szmelc-rce.crx` into `chrome://extensions` (Developer
-  mode).
-- **Zip:** `./pack.sh my-szmelc-rce.zip` and side-load / share.
-
-### CRX signing & the extension id
-
-`npm run crx` signs with (first match wins): `--key k.pem` → `$CRX_KEY` →
-`./key.pem` → `./key.local.crx.pem` (auto-generated on first run, kept on disk
-so repeat builds keep a **stable id**).
-
-> **Keys never leave your machine.** Signing keys are git-ignored
-> (`.gitignore` `*.pem`) and `npm run build` refuses to ship any `*.pem` /
-> `.crx` inside `dist/`. The historically committed `key.local.crx.pem` was
-> **rotated on 2026-11-13** (leaked key deleted, fresh key generated — see
-> [SECURITY.md](./SECURITY.md)); CRX installs now resolve to the extension id
-> `aikmpdfmhcddahdfoeiooaihhdcfmjak`. On old clones run
-> `git rm --cached key.local.crx.pem` if still tracked — `npm run validate`
-> fails while a key file is tracked.
-
-- Chrome derives the CRX id from the manifest `key` field. If that key
-  doesn't match your signing key, the packer builds the CRX from a temp copy
-  with the matching key (unpacked `dist/` is left untouched, keeping the
-  manifest's original id `fcoeoabgfenejglbffodgkkbkcdhcgfn`).
-- The upstream-pinned id is referenced by `native-host/manifest.json`
-  (`allowed_origins`) and the OAuth redirect URI. To use the original id in a
-  CRX too, you'd need the *private* key that matches the manifest `key` —
-  otherwise accept the new id and update `native-host/manifest.json` to match.
-
-The packer's output is verified against Chromium's
-[`crx_file_format.proto`](https://source.chromium.org/chromium/chromium/src/+/main:extensions/common/crx_file_format.proto) —
-self-check plus `crx3-verify` (from `crx3-utils`) both pass.
-
-### Native host (Linux example)
-
-```sh
-cp native-host/manifest.json ~/.config/google-chrome/NativeMessagingHosts/
-cp native-host/rce_host.py  ~/.local/state/rce/
-python3 native-host/install.sh   # adjusts paths, registers the host
-```
-
-The host needs its name in the extension's `nativeHosts` list (default
-`com.szmelc.rce_browser`) and the `nativeMessaging` permission granted.
-
----
+Both are covered in [backend/README.md](./backend/README.md) with the API,
+curl examples and nginx/systemd deployment snippets.
 
 ## Rebranding notes (fork → Szmelc-RCE)
 
