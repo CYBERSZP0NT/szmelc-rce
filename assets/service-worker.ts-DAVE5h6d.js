@@ -278,7 +278,11 @@ function nn() {
 async function rn() {
     if (Nt?.readyState === WebSocket.OPEN || Ot) return !1;
     const e = K();
-    if (Ot = !0, Et && (clearTimeout(Et), Et = null), Ct = null, !e || !an(e)) return Ot = !1, !1;
+    // Szmelc-RCE: anonymous bridge mode — a signed-out device may still connect
+    // to any self-hosted bridge (config bridgeAnonymous, default on). Managed
+    // org posture and already-signed-in-but-blocked states never fall back.
+    const canAnon = (globalThis.__SZMELC_CFG || {}).bridgeAnonymous !== !1 && !(e && e.managed) && !(e && e.identity);
+    if (Ot = !0, Et && (clearTimeout(Et), Et = null), Ct = null, (!e || !an(e)) && !canAnon) return Ot = !1, !1;
     const t = function() {
             const e = L();
             // Szmelc-RCE: bridge endpoint from central config (options.html).
@@ -289,11 +293,38 @@ async function rn() {
     let r, o;
     if (n) r = "dev_user_local";
     else {
-        if (o = await y(), !o) return Ot = !1, _n(), !1;
-        const e = $t;
-        if ($t = !1, r = await m(o, {
-                forceRefresh: e
-            }), !r && e && ($t = !0, r = await a(ee.ACCOUNT_UUID).catch(() => {})), !r) return Ot = !1, _n(), !1
+        // Szmelc-RCE: fast-path — with no tokens stored at all the device is
+        // definitely signed out, so connect anonymously right away instead of
+        // waiting on token validation (which may stall on an unreachable
+        // default API endpoint).
+        let fastAnon = !1;
+        try {
+            const toks = await chrome.storage.local.get(["accessToken", "refreshToken"]);
+            fastAnon = canAnon && !toks.accessToken && !toks.refreshToken;
+        } catch (_) {}
+        if (fastAnon) {
+            r = await en(), o = r
+        } else {
+            try {
+                o = await y()
+            } catch (_) {
+                o = null
+            }
+            if (!o) {
+                // Szmelc-RCE: no OAuth token — connect anonymously if allowed
+                // (device UUID serves as both userId and opaque token).
+                if (!canAnon) return Ot = !1, _n(), !1;
+                r = await en(), o = r
+            } else {
+                const e = $t;
+                if ($t = !1, r = await m(o, {
+                        forceRefresh: e
+                    }), !r && e && ($t = !0, r = await a(ee.ACCOUNT_UUID).catch(() => {})), !r) {
+                    if (!canAnon) return Ot = !1, _n(), !1;
+                    r = await en(), o = r
+                }
+            }
+        }
     }
     if (on(e, n ? void 0 : r)) return Ot = !1, sn(), !1;
     try {
@@ -376,7 +407,30 @@ async function rn() {
                             void 0 === i || i === t ? (lt("bridge"), rt.detachAll("bridge")) : rt.detachAll("bridge", t);
                             break
                         }
-                        case "tool_call": {
+                        case "tool_call":
+                        case "tool_request": {
+                            // Szmelc-RCE: also accept the generic execute_tool
+                            // envelope over the bridge socket, so any
+                            // self-hosted bridge speaking the documented
+                            // {"type":"tool_request","method":"execute_tool",
+                            //  "params":{...}} shape works alongside the hosted
+                            // {"type":"tool_call", ...} frames.
+                            if ("tool_request" === e.type) {
+                                const p = e.params || {};
+                                e = {
+                                    ...e,
+                                    tool_use_id: e.tool_use_id ?? p.tool_use_id,
+                                    tool: p.tool,
+                                    args: p.args ?? {},
+                                    client_type: e.client_type || p.client_type || "bridge",
+                                    permission_mode: p.permission_mode,
+                                    allowed_domains: p.allowed_domains,
+                                    handle_permission_prompts: p.handle_permission_prompts,
+                                    session_scope: p.session_scope,
+                                    supports_tool_result_notices: p.supports_tool_result_notices,
+                                    supports_tool_result_error_code: p.supports_tool_result_error_code,
+                                };
+                            }
                             qt++;
                             const t = wn(e);
                             try {
@@ -653,13 +707,23 @@ async function rn() {
 }
 
 function an(e) {
+    // Szmelc-RCE: anonymous bridge mode (config bridgeAnonymous, default on)
+    // lets a signed-out device connect to any self-hosted bridge. Org policy
+    // (managed posture) always wins over the anonymous fallback.
+    if ((globalThis.__SZMELC_CFG || {}).bridgeAnonymous !== !1 && !(e && e.managed)) return !0;
     return !!e && !e.managed && O(e) && !e.identity?.hybrid && (!!e.identity || !!L().localBridge || !!(globalThis.__SZMELC_CFG || {}).localBridge)
 }
 
 function on(e, t) {
     const n = K(),
         r = n?.identity?.accountUuid;
-    return !n || !an(n) || ge(e.identity, n.identity) || !!t && !!r && r !== t
+    if (!n || !an(n)) {
+        // Szmelc-RCE: a signed-out state may keep an anonymous bridge socket.
+        // Drop it only when anonymous mode is off, org policy is managed, or a
+        // signed-in account no longer matches the peer we connected as.
+        return (globalThis.__SZMELC_CFG || {}).bridgeAnonymous === !1 || !!(n && n.managed) || !!(t && r && r !== t)
+    }
+    return ge(e?.identity, n.identity) || !!t && !!r && r !== t
 }
 
 function sn() {
@@ -3534,7 +3598,7 @@ S(), chrome.storage.onChanged.addListener((e, t) => {
 }), chrome.runtime.onInstalled.addListener(async e => {
     chrome.storage.local.remove(["updateAvailable"]), chrome.alarms.clear("conway-keepalive"), chrome.storage.local.remove(["conwayHostUrl", "conwayMode", "conwayLastConnection", "conwayOrgUuid", "conwayHostId", "conwayHostIdEviction"]), chrome.storage.local.remove(["preferCoworkExperience"]), q(), await Ke.initialize(), await Wa(), e.reason === chrome.runtime.OnInstalledReason.INSTALL && x(), $i(), await Ka()
 }), De(), ke(), chrome.runtime.onStartup.addListener(async () => {
-    q(), await Wa(), await Ke.initialize(), rn(), $i(), await Ka()
+    q(), await Wa(), await Ke.initialize(), await (globalThis.SZMELC?.ready || Promise.resolve()), rn(), $i(), await Ka()
 }), chrome.permissions.onAdded.addListener(e => {
     e.permissions?.includes("nativeMessaging") && $i()
 }), chrome.permissions.onRemoved.addListener(e => {

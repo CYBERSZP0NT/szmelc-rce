@@ -18,8 +18,10 @@ const DIST = path.join(ROOT, "dist");
 const OUT = path.join(DIST, "szmelc-rce");
 const ZIP = path.join(DIST, "szmelc-rce.zip");
 
-const IGNORED_DIRS = new Set(["node_modules", ".git", "dist"]);
-const IGNORED_FILES = new Set(["package.json", "package-lock.json", ".gitignore"]);
+const IGNORED_DIRS = new Set(["node_modules", ".git", "dist", "dev", "scripts", "test"]);
+const IGNORED_FILES = new Set(["package.json", "package-lock.json", ".gitignore", "AGENTS.md"]);
+// Private signing keys must never ship inside a build artifact.
+const IGNORED_SUFFIXES = [".pem", ".crx", ".log"];
 const STEP = (s) => console.log(`\n\x1b[1m\x1b[36m== ${s}\x1b[0m`);
 
 STEP("build[1/3] validate");
@@ -30,6 +32,7 @@ function copyDir(src, dst) {
     fs.mkdirSync(dst, { recursive: true });
     for (const e of fs.readdirSync(src, { withFileTypes: true })) {
         if (IGNORED_DIRS.has(e.name)) continue;
+        if (IGNORED_SUFFIXES.some((s) => e.name.endsWith(s))) continue;
         if (e.name.endsWith(".log") || (["szmelc-rce.zip"].includes(e.name) && dst === OUT)) continue;
         const s = path.join(src, e.name);
         const d = path.join(dst, e.name);
@@ -45,15 +48,23 @@ fs.rmSync(OUT, { recursive: true, force: true });
 copyDir(ROOT, OUT);
 let n = 0;
 for (const e of fs.readdirSync(OUT)) n++;
-const size = (p) => {
-    let total = 0;
-    for (const e of fs.readdirSync(p, { withFileTypes: true })) {
-        const f = path.join(p, e.name);
-        total += e.isDirectory() ? undefined : fs.statSync(f).size;
-    }
-    return total;
-};
 ok(`dist/szmelc-rce/ assembled (${n} top-level entries)`);
+
+// Guard: no private keys / dev-only artifacts may end up in the build output.
+const leaked = [];
+(function scan(d) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) scan(p);
+        else if (IGNORED_SUFFIXES.some((s) => e.name.endsWith(s))) leaked.push(path.relative(OUT, p));
+    }
+})(OUT);
+if (leaked.length) {
+    console.error("\n\x1b[31mBuild aborted: private/key-like files leaked into dist:\x1b[0m");
+    leaked.forEach((f) => console.error("  - " + f));
+    process.exit(1);
+}
+ok("no signing keys or dev artifacts in dist/");
 
 STEP("build[3/3] package zip");
 if (fs.existsSync(ZIP)) fs.rmSync(ZIP);

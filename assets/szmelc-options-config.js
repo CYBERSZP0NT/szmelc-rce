@@ -29,6 +29,7 @@
     ];
     const flags = [
         { id: 'localBridge', label: 'Use local bridge', help: 'Prefer the local bridge over the remote one.' },
+        { id: 'bridgeAnonymous', label: 'Anonymous bridge connect', help: 'When signed out, connect to the remote bridge as an anonymous device (no OAuth needed) — lets any self-hosted bridge work out of the box.' },
     ];
     const multi = [
         { id: 'nativeHosts', label: 'Native messaging hosts', listHelp:

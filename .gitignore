@@ -5,6 +5,10 @@ szmelc-rce.zip
 dist/
 pack/
 *.crx
+*.pem
+key.pem
+key.local.crx.pem
 .env
 .env.*
 dev/shots/
+dev/bridge-state/

@@ -8,21 +8,26 @@
  *    extension -> {type:"connect", client_type:"chrome-extension", ...}
  *    bridge    -> {type:"paired"}                       (or {type:"waiting"})
  *    extension <-> {type:"ping"}                         (keepalive)
+ *    bridge    ->  {type:"tool_call", tool_use_id, tool, args, tabId?}
+ *    extension ->  {type:"tool_result", tool_use_id, content|result|error}
+ *
+ *    ...or the generic envelope (also accepted by the extension):
  *    bridge    ->  {type:"tool_request", method:"execute_tool",
  *                    params:{tool, args, tabId?, tool_use_id}, tool_use_id}
- *    extension ->  {type:"tool_response", tool_use_id, result:{content:[...]}}
+ *    extension ->  {type:"tool_result", tool_use_id, ...}
  *
- * Run it, then in the extension set  bridgeUrl = wss://<this-host>:8080
- * (options.html) and be signed in — or enable "local bridge" with
- * localBridgeUrl = ws://127.0.0.1:8765 for the always-on local path.
+ * Run it, then in the extension set  bridgeUrl = ws://127.0.0.1:8080
+ * (options.html). No account needed: the extension connects anonymously by
+ * default (config bridgeAnonymous = true).
  *
  * Endpoints
- *   /chrome/<userId>   remote bridge (connect with oauth_token / account id)
+ *   /chrome/<userId>   remote bridge (userId = account uuid or device uuid)
  *
- * Demo behaviour (replace handleTool() with your agent):
+ * Demo behaviour (replace with your agent):
  *   - waits for the extension to connect,
- *   - drives one scripted scenario: open a data: page, screenshot it,
- *   - saves screenshots under dev/shots/ and prints them.
+ *   - drives one scripted scenario: create the agent tab group, open a page
+ *     in it — real tools, real browser work,
+ *   - saves screenshots under dev/shots/ when tools return images.
  */
 import { WebSocketServer } from "ws";
 import fs from "node:fs";
@@ -38,11 +43,15 @@ const log = (...a) => console.log("[bridge]", ...a);
 fs.mkdirSync(SHOTS, { recursive: true });
 
 function replyTool(socket, id, payload) {
+    // Hosted-protocol frame (the extension also accepts the generic
+    // {"type":"tool_request","method":"execute_tool",...} envelope).
     socket.send(JSON.stringify({
-        type: "tool_request",
+        type: "tool_call",
         tool_use_id: id,
-        method: "execute_tool",
-        params: { tool: payload.tool, args: payload.args ?? {}, tabId: payload.tabId, tool_use_id: id },
+        tool: payload.tool,
+        args: payload.args ?? {},
+        ...payload.tabId !== undefined && { tabId: payload.tabId },
+        client_type: "bridge",
     }));
 }
 
@@ -64,15 +73,16 @@ function saveIfJpeg(content) {
 
 // A tiny "agent": a list of (tool, args) steps. Replace with your LLM loop.
 const SCENARIO = [
-    { tool: "tab_new", args: { url: "data:text/html,<title>Szmelc-RCE</title><h1 style='font-family:sans-serif'>Remote control works 🎉</h1><p>screenshot captured by the bridge</p>" } },
+    { tool: "tabs_context_mcp", args: { createIfEmpty: true } },
+    { tool: "tabs_create_mcp", args: { url: "data:text/html,<title>Szmelc-RCE</title><h1 style='font-family:sans-serif'>Remote control works 🎉</h1><p>page created by the bridge</p>" } },
 ];
 
 function run(scenario, send, tabId) {
     let i = 0;
     const next = () => {
         if (i >= scenario.length) {
-            log("scenario complete -> sending screenshot");
-            return send({ tool: "screenshot", args: { fullPage: false }, tabId });
+            log("scenario complete — the extension executed all steps");
+            return;
         }
         send(scenario[i++]);
         setTimeout(next, 1500);
@@ -96,9 +106,11 @@ wss.on("connection", (ws, req) => {
             setTimeout(() => { if (!started) { started = true; run(SCENARIO, sendFor(ws), m.tabId); } }, 1500);
             return;
         }
-        if (m.type === "tool_response") {
-            const content = m.result?.content ?? m.error?.content;
-            log("tool_response:", JSON.stringify(content ?? {}).slice(0, 200));
+        if (m.type === "tool_result" || m.type === "tool_response") {
+            // The extension replies with {"type":"tool_result", ...} frames
+            // (hosted protocol); tool_response is the generic-envelope reply.
+            const content = m.result?.content ?? m.error?.content ?? m.content;
+            log("tool_result:", JSON.stringify(content ?? {}).slice(0, 200));
             saveIfJpeg(content);
         }
     });

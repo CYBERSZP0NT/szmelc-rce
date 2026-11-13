@@ -8,7 +8,7 @@ const root = __dirname.replace(/\/scripts$/, "");
 const jsFiles = [];
 (function walk(d) {
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
-        if (e.name === "node_modules" || e.name === ".git") continue;
+        if (e.name === "node_modules" || e.name === ".git" || e.name === "dist") continue;
         const p = path.join(d, e.name);
         if (e.isDirectory()) walk(p);
         else if (e.name.endsWith(".js")) jsFiles.push(p);

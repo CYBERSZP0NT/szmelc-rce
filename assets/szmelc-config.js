@@ -26,6 +26,13 @@ const SZMELC_DEFAULTS = {
      * JSON protocol ({type:"connect"}, "paired"/"waiting", "execute_tool").
      */
     bridgeUrl: "wss://szmelc.com",
+    /**
+     * Connect to the remote bridge WITHOUT an account. When true and you are
+     * not signed in, the extension connects as an anonymous device (device
+     * UUID as both userId and oauth_token) so ANY self-hosted bridge works
+     * with no OAuth provider. Signing in still takes precedence.
+     */
+    bridgeAnonymous: true,
     /** When true, prefer the local bridge (e.g. a Desktop app on this machine). */
     localBridge: false,
     /** Local bridge endpoint (Desktop / Agent-Code-style native host). */
@@ -52,19 +59,33 @@ const SZMELC = {
     STORAGE_KEY: SZMELC_STORAGE_KEY,
     DEFAULTS: SZMELC_DEFAULTS,
 
+    /** Resolves once the persisted local config has been applied. */
+    ready: Promise.resolve(globalThis.__SZMELC_CFG),
+
     /** Synchronous access (defaults + whatever the options page/SW applied). */
     get() {
         return globalThis.__SZMELC_CFG;
     },
 
     _merge(patch) {
-        const { nativeHosts, ...rest } = { ...SZMELC_DEFAULTS, ...(patch || {}) };
+        const src = { ...SZMELC_DEFAULTS, ...(patch || {}) };
+        // Empty strings mean "unset" (options page sends blanks as "") —
+        // fall back to the default instead of overriding it.
+        for (const k of Object.keys(src)) {
+            if (typeof src[k] === "string" && !src[k] && typeof SZMELC_DEFAULTS[k] === "string") {
+                src[k] = SZMELC_DEFAULTS[k];
+            }
+        }
+        const { nativeHosts, ...rest } = src;
         return { ...rest, nativeHosts: Array.isArray(nativeHosts) && nativeHosts.length ? nativeHosts : SZMELC_DEFAULTS.nativeHosts };
     },
 
     /**
      * Called once per context at startup: copy persisted config from
-     * chrome.storage.local into the synchronous global.
+     * chrome.storage.local into the synchronous global. Returns (and stores
+     * on SZMELC.ready) a promise that resolves once the persisted config has
+     * been applied — await it before acting on config-derived values so a
+     * custom bridgeUrl is honored on the very first connect attempt.
      */
     init() {
         try {
@@ -74,13 +95,17 @@ const SZMELC = {
                 const s = chrome.storage.session.getSync(SZMELC_STORAGE_KEY);
                 if (s && s[SZMELC_STORAGE_KEY]) this.applySync(s[SZMELC_STORAGE_KEY]);
             }
-            if (chrome?.storage?.local?.get) {
-                chrome.storage.local.get([SZMELC_STORAGE_KEY]).then((s) => {
+            this.ready = (chrome?.storage?.local?.get
+                ? chrome.storage.local.get([SZMELC_STORAGE_KEY]).then((s) => {
                     const v = s && s[SZMELC_STORAGE_KEY];
                     if (v) this.applySync(v);
-                }).catch(() => {});
-            }
-        } catch (_) { /* no chrome.* in test envs */ }
+                    return globalThis.__SZMELC_CFG;
+                }).catch(() => globalThis.__SZMELC_CFG)
+                : Promise.resolve(globalThis.__SZMELC_CFG));
+        } catch (_) {
+            this.ready = Promise.resolve(globalThis.__SZMELC_CFG); // no chrome.* in test envs
+        }
+        return this.ready;
     },
 
     /** Replace the in-memory config + mirror to session storage (best effort). */

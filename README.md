@@ -33,11 +33,18 @@ Two independent control planes deliver the same `execute_tool` protocol:
 | **Remote bridge** | `wss://<bridgeUrl>/chrome/<userId>` WebSocket | Any server you host (agent, orchestrator, MCP server) |
 | **Local bridge** | `ws://localhost:8765` WebSocket, or **native messaging** hosts (`com.szmelc.rce_browser`, `com.szmelc.rce_code`) | A desktop app / CLI on the same machine |
 
-Tool vocabulary (from the bundled toolset): `left_click`, `double_click`,
-`triple_click`, `right_click`, `hover`, `left_click_drag`, `type`, `key`,
-`scroll`, `zoom`, `screenshot`, `wait`, `scroll_to`, `form_input`, plus
-`browser_batch` (an atomic list of sub-actions) and tab orchestration
-(create/close/focus tabs in a managed tab-group).
+**No account required.** By default (`bridgeAnonymous` on) the extension
+connects to *any* bridge — remote or local — as an anonymous device (device
+UUID as userId/token) when you are not signed in. If you sign in (your own
+OAuth server or the built-in one), authenticated credentials take precedence.
+
+Tool vocabulary (from the bundled toolset; run `tabs_context_mcp` first to
+get a working tab): `navigate`, `computer` (`action: screenshot/click/type/...`),
+`left_click`, `double_click`, `right_click`, `hover`, `left_click_drag`,
+`type`, `key`, `scroll`, `scroll_to`, `form_input`, `find`, `read_page`,
+`get_page_text`, `wait`, plus `browser_batch` (an atomic list of sub-actions)
+and tab orchestration (`tabs_context_mcp`, `tabs_create_mcp`, `tabs_select`,
+`tabs_close_mcp`).
 
 ### Bridge protocol (remote path)
 
@@ -45,25 +52,39 @@ The extension connects and identifies:
 
 ```json
 { "type": "connect", "client_type": "chrome-extension",
-  "device_id": "...", "display_name": "...", "oauth_token": "<id>" }
+  "device_id": "...", "display_name": "...", "oauth_token": "<id or device uuid>" }
 ```
 
 The bridge answers `{"type":"paired"}` or `{"type":"waiting"}`. Afterwards the
-bridge may send JSON tool invocations such as:
+bridge sends tool calls — both of these frame styles work:
+
+**Hosted protocol** (what the upstream hosted bridge speaks):
 
 ```json
-{ "method": "execute_tool",
-  "params": { "tool": "left_click", "args": { "coordinate": [x, y] }, "tabId": 12 } }
+{ "type": "tool_call", "tool_use_id": "<id>", "tool": "left_click",
+  "args": { "coordinate": [x, y] }, "tabId": 12, "client_type": "bridge" }
 ```
 
-The extension replies with `tool_response` frames containing MCP-style
-content blocks. Pings (`{"type":"ping"}`) must be answered; sockets without a
-pong for ~90 s are dropped and reconnected automatically.
+**Generic envelope** (the fork additionally accepts this over the socket):
 
-> The protocol is a superset-compatible fork of the original hosted protocol;
-> a minimal bridge only needs `connect → paired → execute_tool →
-> tool_response`. See `bridge/` (TODO: reference of the full message list is
-> in `assets/service-worker.ts-*.js`, search for `case "`).
+```json
+{ "type": "tool_request", "tool_use_id": "<id>", "method": "execute_tool",
+  "params": { "tool": "left_click", "args": { "coordinate": [x, y] } } }
+```
+
+The extension replies with `{"type":"tool_result","tool_use_id":...}`
+frames carrying MCP-style content blocks (`content: [...]` on success,
+`error`/`is_error` on failure). Tools that manage tabs need a session context
+first: call `tabs_context_mcp` with `{ "createIfEmpty": true }` and reuse the
+same `session_scope` (`{sessionId, displayName}`) on subsequent calls. Tools
+that need user approval emit `{"type":"permission_request", "request_id", ...}`
+frames — answer `{"type":"permission_response","request_id":...,"allowed":true|false}`.
+Pings (`{"type":"ping"}`) must be answered with `{"type":"pong"}`; sockets
+without a pong for ~90 s are dropped and reconnected automatically.
+
+> A minimal bridge only needs `connect → paired → tool_call → tool_result`.
+> `dev/bridge.mjs` is a working reference; `test/e2e-bridge.mjs` exercises the
+> full round-trip against a real browser.
 
 ### Native messaging (local path, self-contained)
 
@@ -73,6 +94,17 @@ The extension talks to native hosts registered as
 [`native-host/`](./native-host). Messages are `{"type":"ping"}` /
 `{"type":"status_response",...}` / `{"type":"tool_request",...}` envelopes —
 any process you write in any language can drive the browser.
+
+The reference host can also **expose a WebSocket drive port** so anything that
+speaks HTTP upgrade can control the browser through it:
+
+```sh
+RCE_HOST_SERVE=ws://127.0.0.1:8766 python3 rce_host.py
+# any WS client: {"method":"execute_tool","params":{"tool":"screenshot",...}}
+#              -> tool_response envelope correlated by tool_use_id
+```
+(optional `websockets` pip package; see `test/nativehost.test.mjs` for the
+exact round-trip)
 
 ---
 
@@ -90,6 +122,7 @@ any process you write in any language can drive the browser.
    | `apiBaseUrl` | `https://szmelc.com` | REST API base (MCP client, event logging) |
    | `wsApiBaseUrl` | `wss://szmelc.com` | WebSocket API base |
    | `bridgeUrl` | `wss://szmelc.com` | **The remote-control bridge you host** |
+   | `bridgeAnonymous` | on | Connect signed-out as an anonymous device (no OAuth needed) |
    | `localBridge` / `localBridgeUrl` | off / `ws://localhost:8765` | Prefer a local bridge |
    | `authorizeUrl` / `tokenUrl` / `revokeUrl` / `oauthClientId` | built-in | Point at your OAuth server |
    | `nativeHosts` | `com.szmelc.rce_browser`, `com.szmelc.rce_code` | Native messaging host names |
@@ -98,12 +131,13 @@ any process you write in any language can drive the browser.
 
 3. (optional) Grant `nativeMessaging` in options when you want the local
    bridge, and install a host script (see below).
-   
-> **Note on CSP:** `manifest.json` `connect-src` currently allows
-> `szmelc.com` plus **any** `ws://localhost` / `ws://127.0.0.1` port.
-> If you self-host the remote bridge under another *hostname*, add it to
-> `content_security_policy` in the manifest (Chrome requires all `connect-src`
-> targets to be declared statically) and reload the extension.
+
+> **Note on CSP:** `manifest.json` `connect-src` allows the bare schemes
+> `https: http: wss: ws:` — so **any** bridge/API host works with no manifest
+> edits (note: scheme sources, not `host://*` wildcards — Chrome's extension
+> service worker does not honour `ws://*`-style wildcards, but it does honour
+> bare scheme sources). Scripts are still locked to `'self'`; only outbound
+> connections are open, because every endpoint is user-configured.
 
 ## Build, test & CRX
 
@@ -111,12 +145,14 @@ All from the repo root:
 
 ```sh
 npm install
-npm run check      # syntax-check every JS file (ESM)  → 746/746 expected
-npm run validate   # manifest refs, asset graph, fonts, CSP, native host
+npm run check      # syntax-check every JS file (ESM)
+npm run validate   # manifest refs, asset graph, fonts, CSP, native host, secrets
 npm run build      # validate → dist/szmelc-rce/ + dist/szmelc-rce.zip
 npm run crx        # → dist/szmelc-rce.crx (real CRX3, self-verified)
-node test/bridge.test.mjs   # bridge protocol self-test (no browser)
-node test/smoke.mjs         # Playwright boot test in system Chrome (CHROME_PATH=… to override)
+node test/bridge.test.mjs     # bridge protocol self-test (no browser)
+node test/nativehost.test.mjs # native-messaging host self-test (no browser)
+node test/smoke.mjs           # Playwright boot test in system Chrome (CHROME_PATH=… to override)
+node test/e2e-bridge.mjs      # real browser ↔ local bridge: anonymous connect + real tools
 npm run test:all
 npm run start:bridge  # reference self-hosted WS bridge on :8080 (RCE_BRIDGE_PORT=…)
 ```
@@ -134,6 +170,13 @@ Install, three ways:
 `npm run crx` signs with (first match wins): `--key k.pem` → `$CRX_KEY` →
 `./key.pem` → `./key.local.crx.pem` (auto-generated on first run, kept on disk
 so repeat builds keep a **stable id**).
+
+> **Keys never leave your machine.** Signing keys are git-ignored
+> (`.gitignore` `*.pem`) and `npm run build` refuses to ship any `*.pem` /
+> `.crx` inside `dist/` — the historical accident of a committed
+> `key.local.crx.pem` is fixed (untrack it with
+> `git rm --cached key.local.crx.pem` on old clones; `npm run validate`
+> fails while it is still tracked).
 
 - Chrome derives the CRX id from the manifest `key` field. If that key
   doesn't match your signing key, the packer builds the CRX from a temp copy
@@ -196,7 +239,7 @@ scripts/validate.mjs     manifest/graph/font/CSP/native-host validator
 scripts/build.mjs        validate → dist/ + zip
 scripts/crx3.mjs         CRX3 packer (self-verified, key management)
 dev/bridge.mjs           reference self-hosted WS bridge (demo scenario)
-test/                    bridge protocol test + Playwright smoke test
+test/                    bridge protocol test, native-host test, Playwright smoke test
 pack.sh                  pack dist/ as a .zip
 ```
 
@@ -206,3 +249,11 @@ Forked from the "Claude in Chrome" extension (v1.0.104), extracted from its
 CRX container, beautified and rebranded to Szmelc-RCE. MIT — see
 [LICENSE](./LICENSE) (applies to this fork; the original code is © its
 respective owners).
+
+Third-party code bundled in `assets/`:
+
+- `gif.js` / `gif.worker.js` — [gif.js](https://github.com/jnordberg/gif.js)
+  by Johan Nordberg, **MIT License** (GIF encoding in the offscreen document).
+- The remaining `assets/*.js` are the upstream extension's own bundled build
+  output (React, Shiki, mermaid, etc. — each under its own upstream license),
+  carried over verbatim with this fork's config/branding patches.

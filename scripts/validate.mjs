@@ -133,7 +133,7 @@ if (manifest?.content_security_policy?.extension_pages) {
 }
 
 // -------------------------------------------------------------- native host -
-console.log("\n[5/5] native-host/");
+console.log("\n[5/6] native-host/");
 const nh = path.join(ROOT, "native-host");
 for (const req of ["manifest.json", "rce_host.py", "install.sh"]) {
     fs.existsSync(path.join(nh, req)) ? ok(`native-host/${req}`) : bad(`native-host missing: ${req}`);
@@ -144,6 +144,20 @@ try {
     if (!/chrome-extension:\/\/[a-p]{32}\//.test(JSON.stringify(nm.allowed_origins || [])))
         warn("native-host allowed_origins: check the extension id (must match your loaded id)");
 } catch (e) { bad("native-host/manifest.json invalid: " + e.message); }
+
+// ------------------------------------------------- open-source hygiene (git) -
+console.log("\n[6/6] secrets / open-source hygiene");
+try {
+    const { execFileSync } = await import("node:child_process");
+    const tracked = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" })
+        .split("\n").filter(Boolean);
+    const keys = tracked.filter((f) => /\.(pem|key|p12|pfx)$/i.test(f));
+    if (keys.length) keys.forEach((k) => bad(`private key file tracked in git: ${k} (git rm --cached it; rotate if it ever leaked)`));
+    else ok("no private key files tracked in git");
+} catch (e) {
+    // not a git checkout — nothing to check
+    ok("git check skipped (not a repository)");
+}
 
 // ------------------------------------------------------------------ summary  -
 console.log("\n" + "─".repeat(48));
