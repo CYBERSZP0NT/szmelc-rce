@@ -4,7 +4,7 @@
  *
  * The production counterpart of dev/bridge.mjs: extensions connect over
  * WebSocket, agents drive them over HTTP and/or WebSocket. Zero state, zero
- * dependencies beyond `ws`.
+ * dependencies (the `ws` library is vendored in backend/vendor/ws).
  *
  *   extension  wss://szmelc.com/chrome/<userId>   (behind your TLS proxy)
  *   agent      POST /chrome/<userId>/tools        {tool, args, tabId?, ...}
@@ -43,7 +43,17 @@
  */
 import http from "node:http";
 import crypto from "node:crypto";
-import { WebSocketServer, WebSocket } from "ws";
+// ws is vendored (MIT, backend/vendor/ws) so the backend runs with zero
+// `npm install` — see backend/vendor/ws/LICENSE. Falls back to a regular
+// `ws` install if the vendored copy is absent (e.g. distro packaging).
+const { WebSocketServer, WebSocket } = await (async () => {
+    try {
+        const m = await import("./vendor/ws/index.js");
+        if (m.default?.WebSocketServer) return m.default;
+    } catch { /* vendored copy absent */ }
+    const m = await import("ws");
+    return m.default?.WebSocketServer ? m.default : m;
+})();
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || "0.0.0.0";
