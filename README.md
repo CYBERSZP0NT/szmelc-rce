@@ -177,6 +177,42 @@ Two interchangeable backends are included:
 Both are covered in [backend/README.md](./backend/README.md) with the API,
 curl examples and nginx/systemd deployment snippets.
 
+## Packaging (Arch / Nix)
+
+**Arch Linux** — `PKGBUILD` in the repo root:
+
+```sh
+makepkg -si            # builds from the v1.1.0 release tarball
+```
+
+The package installs the extension under `/usr/share/szmelc-rce/extension`
+(load via `chrome://extensions` → Developer mode → Load unpacked), the
+backends as `/usr/bin/szmelc-rce-backend` (Node) and
+`/usr/bin/szmelc-rce-backend-php`, a hardened systemd unit
+(`szmelc-rce-backend.service`, configured via `/etc/conf.d/szmelc-rce-backend`),
+and registers the native-messaging hosts system-wide for Chromium and Chrome.
+
+**Nix** — `flake.nix` provides packages + a NixOS module (no npmDepsHash to
+maintain: the Node backend vendors `ws`, the PHP backend needs only `php`):
+
+```sh
+nix build github:CYBERSZP0NT/szmelc-rce            # extension → ./result/share/szmelc-rce/extension
+nix build github:CYBERSZP0NT/szmelc-rce#backend-node
+nix build github:CYBERSZP0NT/szmelc-rce#backend-php
+nix develop github:CYBERSZP0NT/szmelc-rce          # devshell (node, php, python, zip)
+```
+
+```nix
+# configuration.nix (with the flake added as input `szmelc-rce`)
+services.szmelc-rce-backend = {
+  enable = true;
+  port = 8080;
+  apiToken = "change-me";     # required on public hosts
+  permissions = "deny";
+  openFirewall = false;
+};
+```
+
 ## Rebranding notes (fork → Szmelc-RCE)
 
 Everything the original vendor shipped that was hardwired is now either

@@ -12,3 +12,8 @@ key.local.crx.pem
 .env.*
 dev/shots/
 dev/bridge-state/
+# makepkg artifacts
+pkg/
+src/
+*.pkg.tar.*
+.SRCINFO
