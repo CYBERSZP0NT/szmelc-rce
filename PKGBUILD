@@ -38,7 +38,7 @@ backup=('etc/conf.d/szmelc-rce-backend'
         'etc/opt/chrome/native-messaging-hosts/com.szmelc.rce_browser.json'
         'etc/opt/chrome/native-messaging-hosts/com.szmelc.rce_code.json')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('0000000000000000000000000000000000000000000000000000000000000000')  # replaced with the v1.1.0 tarball hash after tagging
+sha256sums=('0a01ad1a3da67e99718169bb1432810a4e70bce8001b1ea529f3398899b69ce0')
 
 prepare() {
     cd "$pkgname-$pkgver"
